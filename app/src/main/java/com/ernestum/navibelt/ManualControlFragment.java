@@ -1,9 +1,11 @@
 package com.ernestum.navibelt;
 
+import android.Manifest;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
@@ -26,21 +28,20 @@ public class ManualControlFragment extends Fragment {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-    }
-    @Override
-    public void onStart() {
-        super.onStart();
-
-        // TODO: or place this in onCreate?
-        Intent intent = new Intent(getActivity(), BeltConnectionService.class);
-        getActivity().bindService(intent, connection, Context.BIND_AUTO_CREATE);
+        if(!(getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1001);
+        } else {
+            startConnectionService();
+        }
 
     }
+
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         binding = FragmentManualControlBinding.inflate(inflater, container, false);
+        binding.quickChoiceFront.setEnabled(false);
         return binding.getRoot();
     }
 
@@ -78,8 +79,6 @@ public class ManualControlFragment extends Fragment {
 
     private ServiceConnection connection = new ServiceConnection() {
 
-
-
         @Override
         public void onServiceConnected(ComponentName className, IBinder service) {
             // We've bound to LocalService, cast the IBinder and get LocalService instance
@@ -95,6 +94,22 @@ public class ManualControlFragment extends Fragment {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode) {
+            case 1001: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                        && (getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                        || getContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
+                    // TODO: Start your service here
+                    startConnectionService();
+                }
+            }
+        }
+    }
+
+    private void startConnectionService() {
+        Intent intent = new Intent(getActivity(), BeltConnectionService.class);
+        getActivity().bindService(intent, connection, Context.BIND_AUTO_CREATE);
     }
 
     BeltConnectionService beltConnectionService;
