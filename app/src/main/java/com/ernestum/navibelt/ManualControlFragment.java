@@ -33,7 +33,32 @@ public class ManualControlFragment extends Fragment {
         } else {
             startConnectionService();
         }
-
+    }
+    
+    private void disableTheGUI() {
+        getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                binding.quickChoiceFront.setEnabled(false);
+                binding.quickChoiceBack.setEnabled(false);
+                binding.quickChoiceLeft.setEnabled(false);
+                binding.quickChoiceRight.setEnabled(false);
+                binding.directionSlider.setEnabled(false);
+            }
+        });
+    }
+    
+    private void enableTheGUI() {
+        getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                binding.quickChoiceFront.setEnabled(true);
+                binding.quickChoiceBack.setEnabled(true);
+                binding.quickChoiceLeft.setEnabled(true);
+                binding.quickChoiceRight.setEnabled(true);
+                binding.directionSlider.setEnabled(true);
+            }
+        });
     }
 
 
@@ -41,6 +66,7 @@ public class ManualControlFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         binding = FragmentManualControlBinding.inflate(inflater, container, false);
+        disableTheGUI();
         return binding.getRoot();
     }
 
@@ -86,6 +112,17 @@ public class ManualControlFragment extends Fragment {
         public void onServiceConnected(ComponentName className, IBinder service) {
             // We've bound to LocalService, cast the IBinder and get LocalService instance
             beltConnectionService = (BeltConnectionService.BeltConnectionServiceBinder) service;
+
+            beltConnectionService.registerConnectionChangeHandler(new BeltConnectionService.ConnectionChangeHandler() {
+                @Override
+                public void connectionChanged(int newConnectionState) {
+                    if(newConnectionState == BeltConnectionService.CONNECTED) {
+                        enableTheGUI();
+                    } else {
+                        disableTheGUI();
+                    }
+                }
+            });
         }
 
         @Override

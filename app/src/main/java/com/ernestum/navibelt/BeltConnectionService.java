@@ -30,9 +30,9 @@ import java.util.Set;
 import java.util.UUID;
 
 public class BeltConnectionService extends Service {
-    public final int DISCONNECTED = 0;
-    public final int CONNECTING = 1;
-    public final int CONNECTED = 2;
+    public static final int DISCONNECTED = 0;
+    public static final int CONNECTING = 1;
+    public static final int CONNECTED = 2;
 
     interface ConnectionChangeHandler {
         void connectionChanged(int newConnectionState);
@@ -42,20 +42,13 @@ public class BeltConnectionService extends Service {
 
     private void setConnectionState(int newState) {
         connectionState = newState;
-        if(newState == DISCONNECTED) {
-            bluetoothAdapter = null;
-            scanner = null;
-            gatt = null;
-            gattService = null;
-            targetDirectionCharacteristic = null;
-        }
         for(ConnectionChangeHandler h : connectionChangeHandlers)
             h.connectionChanged(newState);
 
     }
 
-    private final UUID DIRECTION_SERVICE_UUID = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214");
-    private final UUID TARGET_DIRECTION_CHARACTERISTIC_UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214");
+    private static final UUID DIRECTION_SERVICE_UUID = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214");
+    private static final UUID TARGET_DIRECTION_CHARACTERISTIC_UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214");
 
     public BeltConnectionService() {
     }
