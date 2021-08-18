@@ -22,37 +22,100 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.ParcelUuid;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public class BeltConnectionService extends Service {
-    private final UUID service_uuid = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214");
-    private final UUID direction_characteristic_uuid = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214");
+    public final int DISCONNECTED = 0;
+    public final int CONNECTING = 1;
+    public final int CONNECTED = 2;
+
+    interface ConnectionChangeHandler {
+        void connectionChanged(int newConnectionState);
+    }
+
+    Set<ConnectionChangeHandler> connectionChangeHandlers = new HashSet<ConnectionChangeHandler>();
+
+    private void setConnectionState(int newState) {
+        connectionState = newState;
+        if(newState == DISCONNECTED) {
+            bluetoothAdapter = null;
+            scanner = null;
+            gatt = null;
+            gattService = null;
+            targetDirectionCharacteristic = null;
+        }
+        for(ConnectionChangeHandler h : connectionChangeHandlers)
+            h.connectionChanged(newState);
+
+    }
+
+    private final UUID DIRECTION_SERVICE_UUID = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214");
+    private final UUID TARGET_DIRECTION_CHARACTERISTIC_UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214");
+
     public BeltConnectionService() {
     }
 
-    BluetoothAdapter bluetoothAdapter;
-    BluetoothGatt gatt;
+    private BluetoothAdapter bluetoothAdapter;  // Initialized in onCreate
+    private BluetoothLeScanner scanner;  // Initialized in scanForBelt
+    private BluetoothGatt gatt;  // Initialized when there is the first scan result
+    private BluetoothGattService gattService;  // Initialized when gatt services have been discovered
+    private BluetoothGattCharacteristic targetDirectionCharacteristic; //Initialized when the gattService has been discovered
+
+    private int connectionState = DISCONNECTED;
+
+    public class BeltConnectionServiceBinder extends Binder {
+        int getConnectionState() {
+            return connectionState;
+        }
+
+        void setTargetAngle(int angle) {
+            if (getConnectionState() == CONNECTED) {
+                targetDirectionCharacteristic.setValue(new byte[]{(byte) ((angle / 360.) * 255)});
+                gatt.writeCharacteristic(targetDirectionCharacteristic);
+                Log.d("BLE", "Target angel set!");
+            } else {
+                Log.w("BLE", "Can not set target angle when not connected!");
+            }
+        }
+
+        void registerConnectionChangeHandler(ConnectionChangeHandler handler) {
+            connectionChangeHandlers.add(handler);
+        }
+
+        void unregisterConnectionChangeHandler(ConnectionChangeHandler handler) {
+            connectionChangeHandlers.remove(handler);
+        }
+    }
 
     @Override
     public void onCreate() {
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        requestBluetoothEnableIfDisabled();
-        BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        if(bluetoothAdapter.isEnabled()) {
-            startScanForBelt();
-        }
-
+        startConnecting();
         registerReceiver(deviceStateChangeReceiver, new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
     }
 
-    private boolean requestBluetoothEnableIfDisabled() {
-        if (bluetoothAdapter == null) {  // TODO: this check belongs somewhere else!
+    private void startConnecting() {
+        setConnectionState(CONNECTING);
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        if(bluetoothAdapter == null) {
             Log.d("ConnectionService","No bluetooth available on this device!");
-            return false;
+            setConnectionState(DISCONNECTED);
         }
 
+        requestBluetoothEnableIfDisabled();
+
+        if(bluetoothAdapter.isEnabled()) {
+            startScanForBelt();
+        } else {
+            // The deviceStateChangeReceiver will start the scan as soon as the adapter is enabled
+        }
+    }
+
+    private boolean requestBluetoothEnableIfDisabled() {
         if (!bluetoothAdapter.isEnabled()) {
             Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             enableBtIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -62,9 +125,8 @@ public class BeltConnectionService extends Service {
     }
 
 
-    private BluetoothLeScanner scanner;
 
-    ScanCallback scanCallback = new ScanCallback() {
+    private ScanCallback scanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
             super.onScanResult(callbackType, result);
@@ -75,21 +137,22 @@ public class BeltConnectionService extends Service {
                 @Override
                 public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
                     super.onConnectionStateChange(gatt, status, newState);
-                    gatt.discoverServices();
-                    Log.d("BLE", "gatt connected!");
-                    // TODO: notify of connection loss if we disconnected
+                    if (newState == BluetoothGatt.STATE_CONNECTED) {
+                        gatt.discoverServices();
+                        Log.d("BLE", "gatt connected!");
+                    }
+                    if (newState == BluetoothGatt.STATE_DISCONNECTED) {
+                        setConnectionState(DISCONNECTED);
+                    }
                 }
 
                 @Override
                 public void onServicesDiscovered(BluetoothGatt gatt, int status) {
                     super.onServicesDiscovered(gatt, status);
                     Log.d("BLE", "Services discovered!");
-                    BluetoothGattService service = gatt.getService(service_uuid);
-                    BluetoothGattCharacteristic characteristic = service.getCharacteristic(direction_characteristic_uuid);
-                    characteristic.setValue(new byte[] {1});
-                    gatt.writeCharacteristic(characteristic);
-                    Log.d("BLE", "Characeristic written!");
-                    // TODO: notify that we are now connected!
+                    gattService = gatt.getService(DIRECTION_SERVICE_UUID);
+                    targetDirectionCharacteristic = gattService.getCharacteristic(TARGET_DIRECTION_CHARACTERISTIC_UUID);
+                    setConnectionState(CONNECTED);
                 }
 
                 @Override
@@ -115,37 +178,46 @@ public class BeltConnectionService extends Service {
     private void startScanForBelt() {
 
         if(!(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
-            Log.d("belt", "got no permission!");
-        } else {
-            Log.d("belt", "got permission!");
+            String msg = "Got no permission to ACCESS_FINE_LOCATION. Go to the permission settings and set it to 'Always' for a quick fix.!";
+            Log.d("BLE", msg);
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+            setConnectionState(DISCONNECTED);
+            return;
         }
 
         scanner = bluetoothAdapter.getBluetoothLeScanner();
+        if (scanner == null) {
+            Log.w("BLE", "Could not get a bluetooth scanner!");
+            setConnectionState(DISCONNECTED);
+            return;
+        }
 
         ScanSettings scanSettings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
-        ScanFilter serviceFilter = new ScanFilter.Builder().setServiceUuid(new ParcelUuid(service_uuid)).build();
+        ScanFilter serviceFilter = new ScanFilter.Builder().setServiceUuid(new ParcelUuid(DIRECTION_SERVICE_UUID)).build();
         scanner.startScan(Arrays.asList(serviceFilter) , scanSettings, scanCallback);
-        Log.d("ConnectionService","Started Scan!");
+        Log.d("BLE","Started Scan!");
 
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
-                scanner.stopScan(scanCallback);
-                Log.d("ConnectionService", "Scanning stopped after 30s!");
+                if (connectionState != CONNECTED) {
+                    scanner.stopScan(scanCallback);
+                    Log.d("BLE", "Scanning stopped after 30s!");
+                    setConnectionState(DISCONNECTED);
+                }
             }
         }, 30000);
     }
 
-    public class LocalBinder extends Binder {
-        BeltConnectionService getService() {
-            // Return this instance of LocalService so clients can call public methods
-            return BeltConnectionService.this;
-        }
-    }
 
     @Override
     public IBinder onBind(Intent intent) {
-        return new LocalBinder();
+        return new BeltConnectionServiceBinder();
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        return super.onUnbind(intent);
     }
 
     private final BroadcastReceiver deviceStateChangeReceiver = new BroadcastReceiver() {
@@ -155,7 +227,7 @@ public class BeltConnectionService extends Service {
                 switch (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
                     case BluetoothAdapter.STATE_OFF:
                         // Bluetooth has been turned off;
-                        // TODO: notify user that we disconnected
+                        setConnectionState(DISCONNECTED);
                         break;
                     case BluetoothAdapter.STATE_TURNING_OFF:
                         // Bluetooth is turning off;

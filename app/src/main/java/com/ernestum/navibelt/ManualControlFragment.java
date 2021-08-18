@@ -41,7 +41,6 @@ public class ManualControlFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         binding = FragmentManualControlBinding.inflate(inflater, container, false);
-        binding.quickChoiceFront.setEnabled(false);
         return binding.getRoot();
     }
 
@@ -75,6 +74,10 @@ public class ManualControlFragment extends Fragment {
     private void setDirection(int direction) {
         binding.directionSlider.setProgress(direction);
         binding.directionDegreeDisplay.setText("" + direction);
+
+        if (beltConnectionService != null) {
+            beltConnectionService.setTargetAngle(direction);
+        }
     }
 
     private ServiceConnection connection = new ServiceConnection() {
@@ -82,7 +85,7 @@ public class ManualControlFragment extends Fragment {
         @Override
         public void onServiceConnected(ComponentName className, IBinder service) {
             // We've bound to LocalService, cast the IBinder and get LocalService instance
-            beltConnectionService = ((BeltConnectionService.LocalBinder) service).getService();
+            beltConnectionService = (BeltConnectionService.BeltConnectionServiceBinder) service;
         }
 
         @Override
@@ -100,7 +103,6 @@ public class ManualControlFragment extends Fragment {
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED
                         && (getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                         || getContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
-                    // TODO: Start your service here
                     startConnectionService();
                 }
             }
@@ -112,6 +114,6 @@ public class ManualControlFragment extends Fragment {
         getActivity().bindService(intent, connection, Context.BIND_AUTO_CREATE);
     }
 
-    BeltConnectionService beltConnectionService;
+    BeltConnectionService.BeltConnectionServiceBinder beltConnectionService;
 
 }
