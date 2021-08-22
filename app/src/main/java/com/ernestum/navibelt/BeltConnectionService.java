@@ -47,8 +47,9 @@ public class BeltConnectionService extends Service {
 
     }
 
-    private static final UUID DIRECTION_SERVICE_UUID = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214");
-    private static final UUID TARGET_DIRECTION_CHARACTERISTIC_UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214");
+    private static final UUID DIRECTION_SERVICE_UUID = UUID.fromString("22d40000-458f-44cc-b199-2d6ae6c69984");
+    private static final UUID ENABLE_CHARACTERISTIC_UUID = UUID.fromString("22d40001-458f-44cc-b199-2d6ae6c69984");
+    private static final UUID TARGET_DIRECTION_CHARACTERISTIC_UUID = UUID.fromString("22d40002-458f-44cc-b199-2d6ae6c69984");
 
     public BeltConnectionService() {
     }
@@ -57,6 +58,7 @@ public class BeltConnectionService extends Service {
     private BluetoothLeScanner scanner;  // Initialized in scanForBelt
     private BluetoothGatt gatt;  // Initialized when there is the first scan result
     private BluetoothGattService gattService;  // Initialized when gatt services have been discovered
+    private BluetoothGattCharacteristic enableCharacteristic; //Initialized when the gattService has been discovered
     private BluetoothGattCharacteristic targetDirectionCharacteristic; //Initialized when the gattService has been discovered
 
     private int connectionState = DISCONNECTED;
@@ -70,7 +72,7 @@ public class BeltConnectionService extends Service {
             if (getConnectionState() == CONNECTED) {
                 targetDirectionCharacteristic.setValue(new byte[]{(byte) ((angle / 360.) * 255)});
                 gatt.writeCharacteristic(targetDirectionCharacteristic);
-                Log.d("BLE", "Target angel set!");
+                Log.d("BLE", "Target angle set!");
             } else {
                 Log.w("BLE", "Can not set target angle when not connected!");
             }
@@ -82,6 +84,20 @@ public class BeltConnectionService extends Service {
 
         void unregisterConnectionChangeHandler(ConnectionChangeHandler handler) {
             connectionChangeHandlers.remove(handler);
+        }
+
+        public void setEnableMotors(boolean enabled) {
+            if(getConnectionState() == CONNECTED) {
+                enableCharacteristic.setValue(new byte[] {(byte) (enabled ? 1 : 0)});
+                gatt.writeCharacteristic(enableCharacteristic);
+                Log.d("BLE", "Toggled belt state!");
+            } else {
+                Log.w("BLE", "Can not set enable/disable belt when not connected!");
+            }
+        }
+
+        public void reconnect() {
+            startConnecting();
         }
     }
 
@@ -144,6 +160,7 @@ public class BeltConnectionService extends Service {
                     super.onServicesDiscovered(gatt, status);
                     Log.d("BLE", "Services discovered!");
                     gattService = gatt.getService(DIRECTION_SERVICE_UUID);
+                    enableCharacteristic = gattService.getCharacteristic(ENABLE_CHARACTERISTIC_UUID);
                     targetDirectionCharacteristic = gattService.getCharacteristic(TARGET_DIRECTION_CHARACTERISTIC_UUID);
                     setConnectionState(CONNECTED);
                 }
@@ -162,7 +179,6 @@ public class BeltConnectionService extends Service {
                 }
 
             });
-
 
             scanner.stopScan(scanCallback);
         }

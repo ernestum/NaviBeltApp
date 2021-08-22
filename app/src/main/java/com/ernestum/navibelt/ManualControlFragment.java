@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
@@ -44,6 +45,7 @@ public class ManualControlFragment extends Fragment {
                 binding.quickChoiceLeft.setEnabled(false);
                 binding.quickChoiceRight.setEnabled(false);
                 binding.directionSlider.setEnabled(false);
+                binding.enableSwitch.setEnabled(false);
             }
         });
     }
@@ -57,6 +59,7 @@ public class ManualControlFragment extends Fragment {
                 binding.quickChoiceLeft.setEnabled(true);
                 binding.quickChoiceRight.setEnabled(true);
                 binding.directionSlider.setEnabled(true);
+                binding.enableSwitch.setEnabled(true);
             }
         });
     }
@@ -91,10 +94,14 @@ public class ManualControlFragment extends Fragment {
             }
         });
 
+        binding.enableSwitch.setOnClickListener(view1 -> beltConnectionService.setEnableMotors(binding.enableSwitch.isChecked()));
+
         binding.quickChoiceBack.setOnClickListener(view1 -> setDirection(180));
         binding.quickChoiceFront.setOnClickListener(view1 -> setDirection(0));
         binding.quickChoiceLeft.setOnClickListener(view1 -> setDirection(270));
         binding.quickChoiceRight.setOnClickListener(view1 -> setDirection(90));
+
+        binding.reconnectButton.setOnClickListener(view1 -> beltConnectionService.reconnect());
     }
 
     private void setDirection(int direction) {
@@ -121,6 +128,25 @@ public class ManualControlFragment extends Fragment {
                     } else {
                         disableTheGUI();
                     }
+
+                    getActivity().runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            switch(newConnectionState) {
+                                case BeltConnectionService.CONNECTED:
+                                    binding.reconnectButton.hide();
+                                    break;
+                                case BeltConnectionService.CONNECTING:
+                                    binding.reconnectButton.show();
+                                    binding.reconnectButton.setImageResource(R.drawable.ic_connecting);
+                                    break;
+                                case BeltConnectionService.DISCONNECTED:
+                                    binding.reconnectButton.show();
+                                    binding.reconnectButton.setImageResource(R.drawable.ic_connect);
+                                    break;
+                            }
+
+                        } });
                 }
             });
         }
