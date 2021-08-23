@@ -44,6 +44,11 @@
             android:enabled="true"
             android:exported="false" />
 
+        <service
+            android:name=".NavigationService"
+            android:enabled="true"
+            android:exported="false"></service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
